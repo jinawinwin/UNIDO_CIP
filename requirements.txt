@@ -1,0 +1,11 @@
+pandas>=2.0
+numpy
+scipy
+scikit-learn
+statsmodels
+linearmodels
+plotly>=5.20
+openpyxl
+requests
+playwright
+pyyaml
