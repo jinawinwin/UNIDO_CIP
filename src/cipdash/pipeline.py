@@ -12,6 +12,15 @@ EXPORT_COLS = ["iso3", "country", "year", "cip", "cip_rank", "cip_pct", "dim_cap
                "income", "region", "gdppc_ppp", "fdi_gdp", "trade_gdp", "gcf_gdp", "rd_gdp", "mva_gdp"] + schema.INDICATORS
 
 
+PLACEHOLDER = """<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UNIDO CIP 대시보드</title><body style="font:16px/1.7 'Noto Sans KR',system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 20px;color:#0b0b0b">
+<h1>UNIDO CIP 대시보드: 데이터 대기 중</h1>
+<p>아직 CIP 데이터 파일이 없어 분석 결과가 없습니다. stat.unido.org는 자동 접근을 Cloudflare로 차단하므로 파일을 직접 내려받아야 합니다.</p>
+<ol><li>https://stat.unido.org 의 CIP 데이터베이스에서 CSV 또는 Excel을 내려받습니다(전체 연도, 하위지표 포함).</li>
+<li>저장소의 <code>data/raw/manual/</code> 폴더에 업로드(커밋)합니다.</li>
+<li>커밋하면 자동으로 다시 빌드되어 이 페이지가 대시보드로 바뀝니다.</li></ol></body></html>"""
+
+
 def make_pdf(html_path: Path, pdf_path: Path) -> bool:
     from playwright.sync_api import sync_playwright
     try:
@@ -31,7 +40,8 @@ def make_pdf(html_path: Path, pdf_path: Path) -> bool:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fetch", action="store_true", help="crawl UNIDO and download World Bank data first")
+    ap.add_argument("--fetch", action="store_true", help="download World Bank data first")
+    ap.add_argument("--crawl-unido", action="store_true", help="try the UNIDO portal crawler (blocked by Cloudflare as of Oct 2026)")
     ap.add_argument("--raw", default="data/raw")
     ap.add_argument("--wb", default="data/raw/wb")
     ap.add_argument("--out", default="site")
@@ -40,11 +50,12 @@ def main(argv=None):
     a = ap.parse_args(argv)
     raw, wbdir, out = Path(a.raw), Path(a.wb), Path(a.out)
     if a.fetch:
-        from . import fetch_unido
         try:
             fetch_wb.fetch_all(wbdir)
         except Exception as e:
             print("World Bank fetch failed:", e)
+    if a.crawl_unido:
+        from . import fetch_unido
         try:
             fetch_unido.run(raw / "unido")
         except Exception as e:
@@ -53,8 +64,11 @@ def main(argv=None):
     try:
         panel, log = schema.load_panel(raw, meta[["iso3", "name"]] if meta is not None else None)
     except SystemExit as e:
-        print("::error title=No CIP data::" + str(e).replace("\n", " | ")[:900])
-        raise
+        print("::warning title=No CIP data::" + str(e).replace("\n", " | ")[:900])
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "index.html").write_text(PLACEHOLDER, encoding="utf-8")
+        print("No CIP file found: wrote placeholder page only.")
+        return
     print("\n".join(log))
     if meta is not None:  # keep only real economies when classification is available
         panel = panel[panel.iso3.isin(meta.iso3)]

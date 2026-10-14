@@ -22,7 +22,8 @@ jobs:
       - run: pip install -r requirements.txt
       - run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - run: python -m playwright install --with-deps chromium
-      - name: Crawl data, run analysis, build dashboard + PDF
+      - name: Fetch World Bank data, run analysis, build dashboard + PDF
+        shell: bash
         env: { PYTHONPATH: src }
         run: python -m cipdash.pipeline --fetch --out site 2>&1 | tee pipeline.log
       - name: Publish diagnostics to the crawl-log branch

@@ -376,7 +376,6 @@ def policy(df, kor="KOR"):
         F["fe_coef"] = style(fig, "국가·연도 고정효과 패널회귀 계수 (95% 신뢰구간, 국가 클러스터 표준오차)", 400)
         F["fe_coef"].update_yaxes(autorange="reversed")
         F["fe_coef"].update_xaxes(title="CIP 점수에 대한 한계효과(단위 변화당)")
-        facts["fe_sig"] = [(r.변수, r.모형) for r in R.itertuples() if r.p값 < 0.05 and "GDP(t-1)" not in r.변수 or (r.p값 < 0.05)]
         facts["fe_rows"] = R.to_dict("records")
     # 2018 shock: descriptive pre/post by income group
     s = df.dropna(subset=["cip"])

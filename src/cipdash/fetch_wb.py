@@ -49,13 +49,22 @@ def fetch_indicator(code: str, start=1990, end=2030) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def tidy(d: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Drop aggregate rows (blank/odd ISO3) and duplicates so the (iso3, year) index is unique."""
+    if d.empty:
+        return pd.DataFrame(columns=["iso3", "year", name]).set_index(["iso3", "year"])
+    d = d.rename(columns={"value": name})
+    d = d[d["iso3"].astype(str).str.fullmatch(r"[A-Z]{3}")].drop_duplicates(["iso3", "year"])
+    return d.set_index(["iso3", "year"])
+
+
 def fetch_all(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     fetch_meta().to_csv(out / "meta.csv", index=False)
     frames = []
     for name, code in INDICATORS.items():
-        d = fetch_indicator(code).rename(columns={"value": name})
-        frames.append(d.set_index(["iso3", "year"]))
+        d = tidy(fetch_indicator(code), name)
+        frames.append(d)
         print("WB", name, len(d))
     pd.concat(frames, axis=1).reset_index().to_csv(out / "indicators.csv", index=False)
 
