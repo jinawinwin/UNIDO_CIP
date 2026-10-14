@@ -50,7 +50,11 @@ def main(argv=None):
         except Exception as e:
             print("UNIDO crawl failed:", e)
     meta, wbind = fetch_wb.load(wbdir)
-    panel, log = schema.load_panel(raw, meta[["iso3", "name"]] if meta is not None else None)
+    try:
+        panel, log = schema.load_panel(raw, meta[["iso3", "name"]] if meta is not None else None)
+    except SystemExit as e:
+        print("::error title=No CIP data::" + str(e).replace("\n", " | ")[:900])
+        raise
     print("\n".join(log))
     if meta is not None:  # keep only real economies when classification is available
         panel = panel[panel.iso3.isin(meta.iso3)]

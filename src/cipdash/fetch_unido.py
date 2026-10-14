@@ -41,8 +41,16 @@ def run(out: Path = Path("data/raw/unido")) -> int:
                         (out / f"api_{saved:03d}.{ext}").write_bytes(body)
 
         page.on("response", on_response)
-        page.goto(PORTAL, wait_until="networkidle", timeout=120_000)
-        page.wait_for_timeout(5000)
+        try:
+            page.goto(PORTAL, wait_until="domcontentloaded", timeout=60_000)
+        except Exception as e:
+            print("goto warning:", e)
+        page.wait_for_timeout(15_000)
+        try:
+            page.screenshot(path=str(out / "portal.png"), full_page=True)
+            body_text = page.inner_text("body")[:6000]
+        except Exception as e:
+            body_text = f"(no body: {e})"
         links = page.eval_on_selector_all("a[href]", "els => els.map(e => [e.href, e.innerText])")
         for href, text in links:
             if re.search(r"\.(csv|xlsx?|zip)(\?|$)", href, re.I):
@@ -63,7 +71,7 @@ def run(out: Path = Path("data/raw/unido")) -> int:
                     saved += 1
                 except Exception:
                     continue
-        (out / "_discovery.json").write_text(json.dumps({"page_links": links[:300], "responses": seen[:500]}, indent=1))
+        (out / "_discovery.json").write_text(json.dumps({"body_text": body_text, "page_links": links[:300], "responses": seen[:500]}, indent=1))
         browser.close()
     print(f"UNIDO crawler saved {saved} data file(s); see {out}/_discovery.json")
     return saved

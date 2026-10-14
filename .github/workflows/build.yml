@@ -6,7 +6,7 @@ on:
   schedule:
     - cron: "0 3 1 * *"   # monthly refresh
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 concurrency:
@@ -24,14 +24,16 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - name: Crawl data, run analysis, build dashboard + PDF
         env: { PYTHONPATH: src }
-        run: python -m cipdash.pipeline --fetch --out site
-      - name: Keep crawler discovery log for debugging
+        run: python -m cipdash.pipeline --fetch --out site 2>&1 | tee pipeline.log
+      - name: Publish diagnostics to the crawl-log branch
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: crawl-log
-          path: data/raw/unido/_discovery.json
-          if-no-files-found: ignore
+        run: |
+          mkdir -p /tmp/diag
+          cp pipeline.log /tmp/diag/ 2>/dev/null || true
+          cp data/raw/unido/_discovery.json data/raw/unido/portal.png /tmp/diag/ 2>/dev/null || true
+          ls -la data/raw data/raw/unido data/raw/wb > /tmp/diag/files.txt 2>&1 || true
+          cd /tmp/diag && git init -q -b crawl-log && git config user.name github-actions && git config user.email actions@github.com
+          git add -A && git commit -q -m "diagnostics" && git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" crawl-log
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
