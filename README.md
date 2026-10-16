@@ -1,23 +1,33 @@
 # UNIDO CIP analysis dashboard
 
-Crawls the UNIDO Competitive Industrial Performance (CIP) database and World Bank WDI, runs five analyses
-(descriptive statistics, industrial-upgrading stage, middle-income trap, development-policy association, GVC complement)
-and publishes a static dashboard (GitHub Pages) with CSV / Excel / PDF downloads.
+This repository fetches UNIDO's Competitive Industrial Performance (CIP) index, combines it with World Bank WDI variables, runs descriptive and panel analyses, and publishes a static dashboard with chart/table views and CSV, Excel, and PDF downloads.
 
-## Run
-- GitHub: Settings → Pages → Source = **GitHub Actions**, then Actions → *build-and-deploy-dashboard* → Run workflow.
-- Local: `pip install -r requirements.txt && playwright install chromium && PYTHONPATH=src python -m cipdash.pipeline --fetch`
+## Automated collection
 
-## Data
-**stat.unido.org is protected by a Cloudflare bot challenge (verified in the Actions run, Oct 2026), so automated download is not possible**
-and this project does not try to bypass it. Download the CIP file (csv/xlsx) from the portal yourself and commit it to `data/raw/manual/`;
-the workflow rebuilds on every push. Column names are auto-matched (see `schema.py`); long and wide layouts both work.
-World Bank WDI variables are fetched automatically. Optional: `data/raw/manual/tiva.csv` (`iso3,year,<indicator>`) adds OECD TiVA comparisons.
-`--crawl-unido` keeps the experimental portal crawler available; its diagnostics go to the `crawl-log` branch.
+The monthly GitHub Actions workflow first reads the **official UNIDO CIP metadata API** at `https://stat.unido.org/portal/dataset/getDataset/CIP`, then requests observations with the documented `getDataWithoutActivities` endpoint, one country per request. It reads the dataset ID, country list, variable codes, and available periods dynamically; it does not hard-code the dataset ID. The downloaded country-year panel is cached at `data/raw/unido/cip_api.csv` in the runner and consumed by the analysis pipeline.
 
-## Notes
-- Dimension scores are this project's own percentile averages, not UNIDO's official dimension scores.
-- INDint and MXQual in the UNIDO Reader's Guide appear to be composites of the base indicators; the code uses the eight base
-  indicators and ignores the composites when the base ones exist (verify against Appendix A of the CIP report).
-- Policy regressions are fixed-effects associations, not causal estimates.
-- `tests/make_fixture.py` generates SYNTHETIC data to test the pipeline; its output carries a red banner and is never deployed.
+The API client records `_metadata.json` and `_fetch_log.json`. If UNIDO returns HTTP 403, non-JSON content, or changes its payload structure, inspect those files in the workflow's `crawl-log` diagnostics branch. The crawler does not attempt to bypass access challenges. To use manual data as a fallback, download CSV or Excel from the [UNIDO CIP database](https://stat.unido.org/data/table?dataset=cip) and commit it under `data/raw/manual/`.
+
+## Run locally
+
+```bash
+pip install -r requirements.txt
+python -m playwright install chromium
+PYTHONPATH=src python -m cipdash.pipeline --fetch --crawl-unido --out site
+```
+
+For a dashboard build from an already-downloaded UNIDO file, omit `--crawl-unido`; keep the file under `data/raw/manual/`. Optional `data/raw/manual/tiva.csv` (`iso3,year,<indicator>`) adds OECD TiVA comparisons.
+
+## Dashboard analysis and interpretation
+
+The dashboard includes descriptive statistics and country comparisons, industrial-upgrading stage typology, middle-income country/CIP comparisons, country and year fixed-effects associations, convergence measures, and optional GVC/TiVA complements. Dimension scores are this project's own percentile averages, not UNIDO's official dimension scores. Policy regressions are associations rather than causal estimates. Synthetic data are used only for a CI smoke test and are never intentionally used for the production dashboard.
+
+## Reproducibility and checks
+
+GitHub Actions runs regression tests for the API response normalizer and builds a synthetic end-to-end dashboard before attempting the real UNIDO/WDI pipeline. Each scheduled run updates the diagnostics branch with source status, pipeline logs, and data-file inventory.
+
+## Data source and methodology
+
+- UNIDO Statistics Portal, [CIP Index Database](https://stat.unido.org/data/table?dataset=cip)
+- UNIDO Statistics Portal API guide: `https://stat.unido.org/unido-statistics-portal-api`
+- World Bank Indicators API: `https://api.worldbank.org/v2`

@@ -1,7 +1,6 @@
-"""python -m cipdash.pipeline [--fetch] [--raw data/raw] [--wb data/raw/wb] [--out site]"""
+"""python -m cipdash.pipeline [--fetch] [--crawl-unido] [--raw data/raw] [--wb data/raw/wb] [--out site]"""
 from __future__ import annotations
 import argparse
-import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -13,12 +12,12 @@ EXPORT_COLS = ["iso3", "country", "year", "cip", "cip_rank", "cip_pct", "dim_cap
 
 
 PLACEHOLDER = """<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>UNIDO CIP 대시보드</title><body style="font:16px/1.7 'Noto Sans KR',system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 20px;color:#0b0b0b">
-<h1>UNIDO CIP 대시보드: 데이터 대기 중</h1>
-<p>아직 CIP 데이터 파일이 없어 분석 결과가 없습니다. stat.unido.org는 자동 접근을 Cloudflare로 차단하므로 파일을 직접 내려받아야 합니다.</p>
-<ol><li>https://stat.unido.org 의 CIP 데이터베이스에서 CSV 또는 Excel을 내려받습니다(전체 연도, 하위지표 포함).</li>
-<li>저장소의 <code>data/raw/manual/</code> 폴더에 업로드(커밋)합니다.</li>
-<li>커밋하면 자동으로 다시 빌드되어 이 페이지가 대시보드로 바뀝니다.</li></ol></body></html>"""
+<title>UNIDO CIP 대시보드</title><body style="font:16px/1.7 'Noto Sans KR',system-ui,sans-serif;max-width:760px;margin:48px auto;padding:0 20px;color:#0b0b0b">
+<h1>UNIDO CIP 대시보드: 데이터 수집 확인 필요</h1>
+<p>이번 빌드에서 분석에 필요한 CIP 관측치를 확보하지 못했습니다. 빈 그래프나 임의의 실측치를 표시하지 않았습니다.</p>
+<ol><li><a href="https://stat.unido.org/portal/dataset/getDataset/CIP">UNIDO 공식 CIP API 메타데이터</a> 및 <a href="https://stat.unido.org/unido-statistics-portal-api">API 가이드</a>의 응답 상태를 확인합니다.</li>
+<li>저장소의 <code>crawl-log</code> 브랜치에서 <code>_fetch_log.json</code> 및 <code>pipeline.log</code>를 열어 오류를 확인합니다.</li>
+<li>API 접근이 일시적으로 불가능하면 공식 포털에서 CIP CSV/Excel을 내려받아 <code>data/raw/manual/</code>에 올리면 대체 입력으로 분석할 수 있습니다.</li></ol></body></html>"""
 
 
 def make_pdf(html_path: Path, pdf_path: Path) -> bool:
@@ -41,7 +40,7 @@ def make_pdf(html_path: Path, pdf_path: Path) -> bool:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--fetch", action="store_true", help="download World Bank data first")
-    ap.add_argument("--crawl-unido", action="store_true", help="try the UNIDO portal crawler (blocked by Cloudflare as of Oct 2026)")
+    ap.add_argument("--crawl-unido", action="store_true", help="download CIP observations using UNIDO's documented public API")
     ap.add_argument("--raw", default="data/raw")
     ap.add_argument("--wb", default="data/raw/wb")
     ap.add_argument("--out", default="site")
@@ -49,17 +48,17 @@ def main(argv=None):
     ap.add_argument("--fixture", action="store_true")
     a = ap.parse_args(argv)
     raw, wbdir, out = Path(a.raw), Path(a.wb), Path(a.out)
-    if a.fetch:
-        try:
-            fetch_wb.fetch_all(wbdir)
-        except Exception as e:
-            print("World Bank fetch failed:", e)
     if a.crawl_unido:
         from . import fetch_unido
         try:
             fetch_unido.run(raw / "unido")
         except Exception as e:
-            print("UNIDO crawl failed:", e)
+            print("UNIDO API collection failed:", e)
+    if a.fetch:
+        try:
+            fetch_wb.fetch_all(wbdir)
+        except Exception as e:
+            print("World Bank fetch failed:", e)
     meta, wbind = fetch_wb.load(wbdir)
     try:
         panel, log = schema.load_panel(raw, meta[["iso3", "name"]] if meta is not None else None)
@@ -67,7 +66,7 @@ def main(argv=None):
         print("::warning title=No CIP data::" + str(e).replace("\n", " | ")[:900])
         out.mkdir(parents=True, exist_ok=True)
         (out / "index.html").write_text(PLACEHOLDER, encoding="utf-8")
-        print("No CIP file found: wrote placeholder page only.")
+        print("No CIP observations found: wrote a diagnostic page, not an empty analytical dashboard.")
         return
     print("\n".join(log))
     if meta is not None:  # keep only real economies when classification is available
