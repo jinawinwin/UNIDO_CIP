@@ -28,7 +28,12 @@ jobs:
       - name: Fetch World Bank data, run analysis, build dashboard + PDF
         shell: bash
         env: { PYTHONPATH: src }
-        run: python -m cipdash.pipeline --fetch --out site 2>&1 | tee pipeline.log
+        run: |
+          args=(--fetch)
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" || "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            args+=(--crawl-unido)
+          fi
+          python -m cipdash.pipeline "${args[@]}" --out site 2>&1 | tee pipeline.log
       - name: Publish diagnostics to the crawl-log branch
         if: always()
         run: |

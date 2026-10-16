@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import re
 import gzip
+import base64
 from pathlib import Path
 
 import pandas as pd
@@ -176,9 +177,27 @@ def normalise(df: pd.DataFrame, source: str = "") -> pd.DataFrame | None:
     return out
 
 
+def _restore_chunked_panel(raw_dir: Path) -> Path | None:
+    """Reassemble the compressed manual snapshot from text-safe repository parts."""
+    parts = sorted(raw_dir.rglob("cip_panel.csv.gz.b64/part-*"))
+    if not parts:
+        return None
+    encoded = "".join(p.read_text(encoding="ascii").strip() for p in parts)
+    target = parts[0].parent.parent / "cip_panel.csv.gz"
+    try:
+        target.write_bytes(base64.b64decode(encoded, validate=True))
+    except Exception as e:
+        raise SystemExit(f"Invalid chunked CIP panel in {parts[0].parent}: {e}") from e
+    return target
+
+
 def load_panel(raw_dir: Path, country_names: pd.DataFrame | None = None) -> tuple[pd.DataFrame, list[str]]:
+    # Large GitHub blobs are supplied as small base64 text parts by the repository
+    # uploader; reassemble the source snapshot before scanning the raw directory.
+    _restore_chunked_panel(raw_dir)
     files = [p for p in sorted(raw_dir.rglob("*")) if (p.suffix.lower() in (".csv", ".xlsx", ".xls", ".json") or p.name.lower().endswith(".csv.gz"))
              and "_discovery" not in p.name and "wb" not in p.parts]
+    files.sort(key=lambda p: (0 if p.relative_to(raw_dir).parts[0] == "unido" else 1, str(p)))
     frames, log = [], []
     for f in files:
         try:

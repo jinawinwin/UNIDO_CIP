@@ -7,4 +7,4 @@
 - For MVA per capita and manufactured exports per capita, the panel uses the export's `ValueUSD` field so both level variables share a common currency basis. Other indicators use `Value`.
 - The original export's values are not estimated or filled. Missing observations remain missing.
 
-The loader also supports the original UNIDO long-format CSV directly. The compressed panel is a ready-to-build snapshot for this repository.
+The loader also supports the original UNIDO long-format CSV directly. The compressed panel is stored in text-safe parts in this repository and reassembled automatically during loading; it is a ready-to-build snapshot when the API is unavailable.

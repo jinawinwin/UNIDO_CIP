@@ -1,12 +1,13 @@
 """Tests for normalising the official UNIDO table export."""
 import gzip
+import base64
 import tempfile
 import unittest
 from pathlib import Path
 
 import pandas as pd
 
-from cipdash.schema import normalise, read_any
+from cipdash.schema import normalise, read_any, _restore_chunked_panel
 
 
 class TestUNIDOTableExport(unittest.TestCase):
@@ -37,6 +38,18 @@ class TestUNIDOTableExport(unittest.TestCase):
             result = read_any(path)[0]
         self.assertEqual(len(result), 5)
         self.assertIn("VariableCode", result.columns)
+
+    def test_chunked_snapshot_is_reassembled(self):
+        with tempfile.TemporaryDirectory() as d:
+            raw = Path(d)
+            part_dir = raw / "manual/unido/cip_panel.csv.gz.b64"
+            part_dir.mkdir(parents=True)
+            source = gzip.compress(b"year,cip\n2024,0.3\n")
+            encoded = base64.b64encode(source).decode("ascii")
+            (part_dir / "part-000").write_text(encoded[:12], encoding="ascii")
+            (part_dir / "part-001").write_text(encoded[12:], encoding="ascii")
+            restored = _restore_chunked_panel(raw)
+            self.assertEqual(gzip.decompress(restored.read_bytes()), b"year,cip\n2024,0.3\n")
 
 
 if __name__ == "__main__":
