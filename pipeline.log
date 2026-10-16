@@ -1,0 +1,9 @@
+WB gdppc_ppp 8561
+WB fdi_gdp 8336
+WB trade_gdp 7425
+WB gcf_gdp 7248
+WB rd_gdp 3140
+WB mva_gdp 7551
+World Bank indicators saved: 8,917 country-year rows; 257 countries
+read cip_panel.csv.gz: 5320 rows, columns ['cip', 'mvapc', 'mxpc', 'mvash', 'mhvash', 'mxsh', 'mhxsh', 'imwmva', 'imwmt', 'indint', 'mxqual']
+dashboard: site/index.html | pdf: True
