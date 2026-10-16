@@ -6,6 +6,7 @@ Unknown layouts fail loudly with the detected column names so the mapping can be
 from __future__ import annotations
 import json
 import re
+import gzip
 from pathlib import Path
 
 import pandas as pd
@@ -51,6 +52,12 @@ def _match_columns(cols) -> dict:
 
 def read_any(path: Path) -> list[pd.DataFrame]:
     suf = path.suffix.lower()
+    if path.name.lower().endswith(".csv.gz"):
+        try:
+            with gzip.open(path, "rt", encoding="utf-8-sig") as f:
+                return [pd.read_csv(f)]
+        except Exception as e:
+            raise ValueError(f"cannot read {path}: {e}") from e
     if suf == ".csv":
         for enc in ("utf-8-sig", "cp949", "latin-1"):
             try:
@@ -89,8 +96,69 @@ def _wide_to_long(df: pd.DataFrame) -> pd.DataFrame | None:
     return wide
 
 
+LONG_VARIABLES = {
+    "cip": "cip",
+    "mvapc": "mvapc",
+    "mxpc": "mxpc",
+    "mvash": "mvash",
+    "mhvash": "mhvash",
+    "mxsh": "mxsh",
+    "mhxsh": "mhxsh",
+    "imwmva": "imwmva",
+    "imwmt": "imwmt",
+    "indintindex": "indint",
+    "mxqualindex": "mxqual",
+}
+
+
+def _unido_long_to_wide(df: pd.DataFrame) -> pd.DataFrame | None:
+    """Convert the UNIDO table export (one country-year-variable per row)."""
+    by_norm = {norm(c): c for c in df.columns}
+    year_col = by_norm.get("year")
+    country_col = by_norm.get("country")
+    var_col = by_norm.get("variablecode") or by_norm.get("unconsolidatedvariablecode")
+    value_col = by_norm.get("value")
+    code_col = by_norm.get("countrycode")
+    if not all((year_col, country_col, var_col, value_col)):
+        return None
+
+    variables = df[var_col].astype(str).map(norm).map(LONG_VARIABLES)
+    keep = variables.notna()
+    if not keep.any():
+        return None
+    x = df.loc[keep, [year_col, country_col, value_col] + ([code_col] if code_col else [])].copy()
+    x["_indicator"] = variables.loc[keep]
+    x["year"] = pd.to_numeric(x[year_col], errors="coerce")
+    x["_value"] = pd.to_numeric(x[value_col], errors="coerce")
+
+    # The export includes a common-currency column for the two per-capita level
+    # variables. Use it so comparisons and their ratio share a currency basis.
+    usd_col = by_norm.get("valueusd")
+    if usd_col:
+        level = x["_indicator"].isin(["mvapc", "mxpc"])
+        usd = pd.to_numeric(df.loc[keep, usd_col], errors="coerce")
+        x.loc[level, "_value"] = usd.loc[level].where(usd.loc[level].notna(), x.loc[level, "_value"])
+
+    x = x.dropna(subset=["year", "_value"])
+    x["year"] = x["year"].astype(int)
+    x["country"] = x[country_col].astype(str).str.strip()
+
+    if code_col:
+        code = df.loc[x.index, code_col].astype(str).str.strip().str.replace(r"\.0$", "", regex=True).str.zfill(3)
+        m49_path = Path(__file__).with_name("m49_to_iso3.json")
+        m49_to_iso3 = json.loads(m49_path.read_text(encoding="utf-8"))
+        x["iso3"] = code.map(m49_to_iso3)
+
+    index = [c for c in ("iso3", "country", "year") if c in x]
+    wide = x.pivot_table(index=index, columns="_indicator", values="_value", aggfunc="first").reset_index()
+    wide.columns.name = None
+    return wide
+
+
 def normalise(df: pd.DataFrame, source: str = "") -> pd.DataFrame | None:
-    wide = _wide_to_long(df)
+    wide = _unido_long_to_wide(df)
+    if wide is None:
+        wide = _wide_to_long(df)
     if wide is not None:
         df = wide
     m = _match_columns(list(df.columns))
@@ -109,7 +177,7 @@ def normalise(df: pd.DataFrame, source: str = "") -> pd.DataFrame | None:
 
 
 def load_panel(raw_dir: Path, country_names: pd.DataFrame | None = None) -> tuple[pd.DataFrame, list[str]]:
-    files = [p for p in sorted(raw_dir.rglob("*")) if p.suffix.lower() in (".csv", ".xlsx", ".xls", ".json")
+    files = [p for p in sorted(raw_dir.rglob("*")) if (p.suffix.lower() in (".csv", ".xlsx", ".xls", ".json") or p.name.lower().endswith(".csv.gz"))
              and "_discovery" not in p.name and "wb" not in p.parts]
     frames, log = [], []
     for f in files:
@@ -143,3 +211,4 @@ def load_panel(raw_dir: Path, country_names: pd.DataFrame | None = None) -> tupl
     bad = panel["country"].astype(str).str.contains(r"world|income|total|region|developing|developed|average|oecd", case=False, regex=True)
     panel = panel[~bad]
     return panel.sort_values(["iso3", "year"]).reset_index(drop=True), log
+
